@@ -1,0 +1,404 @@
+---
+title: "Capstone Project"
+author: "Andras Balogh"
+date: "2024-02-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Google Data Analytics Capstone Project
+## Bellabeat Marketing Analysis Case Study
+
+**Task:** Analyze public data about smart device use habits, and make recommendations for improving marketing strategies for the company.
+
+
+The data is available through Kaggle.  [FitBit Fitness Tracker Data](https://www.kaggle.com/datasets/arashnic/fitbit). It consists of 18 csv files of various sizes. The largest one is 85.4 MB, which is too large for handling in spreadsheet, but it is perfectly fine for R. I decided to use RStudio on my laptop for the data analysis.   
+
+Load some helpful library packages.
+
+```{r loading packages}
+library(tidyverse)
+library(skimr)
+library(janitor)
+library(lubridate)
+library(RColorBrewer)
+```
+
+<br> 
+
+
+There are 18 csv files with data in them. 
+
+* Five files with daily data:
+  1. dailyActivity_merged.csv 
+  2. dailyCalories_merged.csv
+  3. dailyIntensities_merged.csv
+  4. dailySteps_merged.csv
+  5. sleepDay_merged.csv
+* Three files with hourly data:
+  1. hourlyIntensities_merged.csv
+  2. hourlySteps_merged.csv
+  3. hourlyCalories_merged.csv
+* Three files with minute data:
+  1. minuteSleep_merged.csv
+  2. minuteMETsNarrow_merged.csv
+  3. minuteCaloriesNarrow_merged.csv
+  4. minuteCaloriesWide_merged.csv      
+  5. minuteStepsNarrow_merged.csv
+  6. minuteStepsWide_merged.csv
+  7. minuteIntensitiesNarrow_merged.csv
+  8. minuteIntensitiesWide_merged.csv   
+* One file with seconds data:
+  1. heartrate_seconds_merged.csv
+* One file with weight data
+  1. weightLogInfo_merged.csv
+
+Reading all files into R can be done in various ways, but not all 18 are needed all at once. For this reason, instead of the following chunk reading all 18 files at once, we will read a few specific ones and the other files later whenver they are needed.
+
+Loading all csv files in the directory using their file name as data frame name:
+
+```{r load all csv files}
+#files <- list.files(pattern = "\\.csv$", full.names = TRUE)
+#data_list <- map(files, read_csv)
+#file_names <- tools::file_path_sans_ext(basename(files))
+#names(data_list) <- file_names
+```
+
+<br> <br>
+
+## First, let us concentrate on the daily data files.
+
+Read the file contents into data frames and "glimpse" at them.
+
+```{r load daily data}
+activity_daily <- read_csv("./dailyActivity_merged.csv")
+calories_daily <- read_csv("dailyCalories_merged.csv")
+intensities_daily <- read_csv("dailyIntensities_merged.csv")
+steps_daily <- read_csv("dailySteps_merged.csv")
+sleep_daily <- read_csv("./sleepDay_merged.csv")
+
+glimpse(activity_daily)
+glimpse(calories_daily)
+glimpse(intensities_daily)
+glimpse(steps_daily)
+glimpse(sleep_daily)
+```
+
+The dates are formatted as strings. We change them to date format. We also make sure they are all called ActivityDate for uniformity.
+
+```{r change make date column names uniform and change dates from string to date formats}
+
+calories_daily <- rename(calories_daily, ActivityDate = ActivityDay)
+intensities_daily <-  rename(intensities_daily, ActivityDate = ActivityDay)
+steps_daily <- rename(steps_daily, ActivityDate = ActivityDay)
+sleep_daily <- rename(sleep_daily, ActivityDate = SleepDay)
+
+activity_daily$ActivityDate <- mdy(activity_daily$ActivityDate)
+calories_daily$ActivityDate <- mdy(calories_daily$ActivityDate)
+intensities_daily$ActivityDate <- mdy(intensities_daily$ActivityDate)
+steps_daily$ActivityDate <- mdy(steps_daily$ActivityDate)
+sleep_daily$ActivityDate <- date(mdy_hms(sleep_daily$ActivityDate))
+
+```
+
+
+Let us look at the data frames again:
+
+```{r glimpse at the data}
+glimpse(activity_daily)
+glimpse(calories_daily)
+glimpse(intensities_daily)
+glimpse(steps_daily)
+glimpse(sleep_daily)
+```
+
+<br> 
+
+We know that the Ids represent users. Let's check how man different users there are. 
+
+```{r}
+activity_daily %>% summarise(n_distinct(Id), min(Id), max(Id))
+calories_daily %>% summarise(n_distinct(Id), min(Id), max(Id))
+intensities_daily %>% summarise(n_distinct(Id), min(Id), max(Id))
+steps_daily %>% summarise(n_distinct(Id), min(Id), max(Id))
+sleep_daily %>% summarise(n_distinct(Id), min(Id), max(Id))
+```
+
+33 distinct users in four of the data frames, 24 distinct users in the sleep data frame. We will have to be careful handling the sleep data together with the other activity data, because the users will not match.
+
+<br> <br>
+
+There are three diffferent intensities are recorded for activities:  LightlyActiveMinutes; FairlyActiveMinutes; and VeryActiveMinutes. Let us add together these to get a new column called TotalActiveMinutes, and also compare each with how calories are burnt through the activities of different intensities. 
+
+
+```{r }
+ggplot(data=activity_daily, aes(x=LightlyActiveMinutes, y=Calories)) + 
+  geom_point() + geom_smooth() + labs(title="Calories vs. Lightly Active Minutes")
+
+ggplot(data=activity_daily, aes(x=FairlyActiveMinutes, y=Calories)) + 
+  geom_point() + geom_smooth() + labs(title="Calories vs. Fairly Active Minutes")
+
+ggplot(data=activity_daily, aes(x=VeryActiveMinutes, y=Calories)) + 
+  geom_point() + geom_smooth() + labs(title="Calories vs. Very Active Minutes")
+
+activity_daily <- activity_daily %>%
+  mutate(TotalActiveMinutes = LightlyActiveMinutes + FairlyActiveMinutes + VeryActiveMinutes)
+ggplot(data=activity_daily, aes(x=TotalActiveMinutes, y=Calories)) + 
+  geom_point() + geom_smooth() + labs(title="Calories vs. Total Active Minutes")
+
+```
+
+
+We have to be careful with the comparison because the scales on the axes are not the same.  While the total active minutes show good correlation to the calories burnt, notice that burning 3,000 calories on average would require almost 500 minutes of total activities, which is more than 8 hours. Compared to that, the figure with the Very Active Minutes shows 3,000 calories burnt on average with only about 80 minutes of activities. This emphasizes the importance of intensive activities. In order to investigate this more, we will redraw the Calories vs. Total Active Minutes figure with color gradient added using the proportion of very active minutes to the total active minutes (VAMinProp = VeryActiveMinutes/TotalActiveMinutes).
+
+
+
+```{r }
+activity_daily <- activity_daily %>%
+  mutate(VAMinProp = VeryActiveMinutes/TotalActiveMinutes)
+ggplot(data=activity_daily, aes(x=TotalActiveMinutes, y=Calories)) + 
+  geom_point(aes(colour = VAMinProp)) +  scale_colour_gradient2() + geom_smooth() +  labs(title="Calories vs. Total Active Minutes with Proportion of Very Active Minutes")
+```
+
+
+This figure also shows that short but higher intensity activities have more significant calory burning effects. This is very important information for people with sedentary work and life style, who might have limited time for exercises. 
+
+<br>
+
+
+
+## Next, we turn our attention to steps and calories. 
+They are in separate data frames. Let us merge them by the Ids and the dates, and then plot the calories vs. the number of steps taken.
+
+```{r}
+calories_steps <- merge(calories_daily, steps_daily, by=c('Id', 'ActivityDate'))
+
+glimpse(calories_steps)
+
+ggplot(data=calories_steps, aes(x=StepTotal, y=Calories)) + 
+  geom_point() + geom_smooth() + labs(title="Calories Burnt vs. Total Steps")
+```
+
+
+As before, and not surprisingly, the figure shows good correlation between the calories burnt and the total number of stops. The issues is again, that it takes 20,000 steps to burn on average 3,000 calories. This is quite a lot os steps from my personal experience. On the other hand, there is a large deviation in the burnt calories, espeically in the range of 10,000-15,000 steps. Let us go back to the intensities and see how the distances taken during the various intensities correlate to the calories burnt.
+
+
+```{r }
+ggplot(data=activity_daily, aes(x=LightActiveDistance, y=Calories)) + 
+  geom_point() + geom_smooth() + labs(title="Calories vs. Lightly Active Distance")
+ggplot(data=activity_daily, aes(x=ModeratelyActiveDistance, y=Calories)) + 
+  geom_point() + geom_smooth() + labs(title="Calories vs. Moderately Active Distance")
+ggplot(data=activity_daily, aes(x=VeryActiveDistance, y=Calories)) + 
+  geom_point() + geom_smooth() + labs(title="Calories vs. Very Active Distance")
+
+ggplot(data=activity_daily, aes(x=TotalDistance, y=Calories)) + 
+  geom_point() + geom_smooth() + labs(title="Calories vs. Total Distance")
+
+cor(activity_daily$LightActiveDistance, activity_daily$Calories)
+cor(activity_daily$ModeratelyActiveDistance, activity_daily$Calories)
+cor(activity_daily$VeryActiveDistance, activity_daily$Calories)
+cor(activity_daily$TotalDistance, activity_daily$Calories)
+
+```
+
+There is strong correlation (0.645) only with the total distance
+
+Let us see if it makes any difference if we take into account the proportion of steps taken during very activities with respect to the total distance (VADistProp).
+
+```{r}
+activity_daily <- activity_daily %>%
+  mutate(VADistProp = VeryActiveDistance/TotalDistance)
+
+
+ggplot(data=activity_daily, aes(x=TotalDistance, y=Calories)) + 
+  geom_point(aes(colour = VADistProp)) +  scale_colour_gradient2() + geom_smooth() +  labs(title="Calories vs. Total Distance with Proportion of Very Active Distance")
+```
+
+This figure does not show that small distance but with high intensity is better than long distance with low intensity. The reason for this must be that high intensity activity exercises sometimes result in smaller distance taken. With other words, someone who took 5 miles of a total distance might have taken most of this distance with moderate or light activities (hence the white color), but still can burn a lot of calories with high intensity stationary activities. The figure does show, however, that longer distances were done mostly during very intensive activities.
+
+
+## Next, we turn our attention to the the sleep_daily data frame.
+We compare the TotalMinutesAsleep to the TotalTimeInBed. How is sleep time related to bed time?
+
+
+```{r plot sleep data}
+ggplot(data=sleep_daily, aes(x=TotalTimeInBed, y=TotalMinutesAsleep)) + 
+  geom_point() + geom_smooth() + labs(title="Sleep Time vs. Bed Time")
+```
+
+Very can see nice linear relationship. The bulk of the data shows that people sleep not less than an hour than the amount of time they spend in bed. This is good information. It suggests that if we want to sleep more with have to simply spend more time in bed. It is somewhat concerning that there are several data points showing people who sleep less than 4 hours or more than 10 hours or stays in bed more than 14 hours. Let us remove (filter out) those data points as outliers.
+
+
+```{r}
+sleep_daily %>% filter(TotalMinutesAsleep > 240 & TotalMinutesAsleep < 600 & TotalTimeInBed <840)   %>% 
+  ggplot(aes(x=TotalTimeInBed, y=TotalMinutesAsleep)) + 
+  geom_point() + geom_smooth() + labs(title="Sleep Time vs. Bed Time with outliers removed")
+
+```
+
+
+# Sleep vs. Activities
+We merge the activity_daily and sleep_daily data frames using inner merge on the Id's and the  ActivityDate. Remember that there are 33 distinct people in the activity data frame but only 24 in the sleep data frame.
+
+
+```{r}
+activities_sleep <- merge(activity_daily, sleep_daily, by=c('Id', 'ActivityDate'))
+glimpse(activities_sleep)
+
+activities_sleep %>% summarise(n_distinct(Id), min(Id), max(Id))
+```
+
+
+Let us plot see if burning more calories results in more sleep by plotting  TotalMinutesAsleep vs. Calories.
+
+```{r}
+ggplot(data=activities_sleep, aes(x=TotalMinutesAsleep, y=Calories)) + 
+  geom_point() + geom_smooth() + labs(title="Sleep  vs. Activities")
+cor(activities_sleep$Calories,activities_sleep$TotalMinutesAsleep)
+```
+
+Apparently, sleeping and the amount of calories burnt are not correlated. 
+
+<br>
+
+Let us look at the connection between sedentary minutes and total minutes asleep.
+
+```{r sleep time and sedentary minutes}
+ggplot(data=activities_sleep, aes(x=SedentaryMinutes, y=TotalMinutesAsleep)) + 
+  geom_point() + geom_smooth() + labs(title="Sleep  vs. SedentaryMinutes")
+cor(activities_sleep$SedentaryMinutes,activities_sleep$TotalMinutesAsleep)
+```
+
+It looks like there is a negative correlation but only for more than 8 hours (480 minutes) of Sedentary time. This is interesting data the could be investigated more, and an app could take it into account with possible warnings, that neither very low nor high sedentary time helps with sleep. 
+
+Let us look at filtered data that has more than 8 hours (480 minutes) of sedentary time.
+
+
+```{r  filter activities_sleep by large SedentaryMinutes}
+
+activities_sleep_filtered <- activities_sleep  %>% filter(SedentaryMinutes > 480)   
+
+ggplot(activities_sleep_filtered, aes(x=SedentaryMinutes, y=TotalMinutesAsleep)) + 
+  geom_point() + geom_smooth() +    
+  labs(title="Sleep  vs. SedentaryMinutes for SedentaryMinutes > 480")
+
+cor(activities_sleep_filtered$SedentaryMinutes, activities_sleep_filtered$TotalMinutesAsleep)
+
+```
+
+Data with more than 8 hours (480 minutes) of sedentary time shows a stronger negative correlation between sedentary time and sleep time.
+
+<br> 
+
+## Weight Analysis
+Let us load and look at the weightLogInfo_merged file:
+
+```{r weightLogInfo}
+weightLog <- read_csv("./weightLogInfo_merged.csv")
+glimpse(weightLog) 
+weightLog %>%  select(BMI) %>%  summary()
+n_distinct(weightLog$Id)
+```
+
+Note that the mean BMI is 25.19, which indicates slightly overwheight persons. In any case, the 67 total observations comming from 8 persons total is a very small data set. This data is not enough for drawing conclusions from it.
+
+<br>
+
+## Hourly Activities
+
+Let us load and look at the hourlyIntensities_merged file:
+
+```{r hourlyIntensities}
+hourlyIntensities <- read_csv("./hourlyIntensities_merged.csv")
+glimpse(hourlyIntensities) 
+```
+
+The column ActivityHour contains both date and time together as a character string. We have to separate them in order to examine the times of the day when people do more activities. We create a column called ActivityDay and store only hour of the day in the already existing column ActivityHour.
+
+
+```{r separate ActivityHour }
+hourlyIntensities <- hourlyIntensities %>%
+  mutate(ActivityDay = date(mdy_hms(hourlyIntensities$ActivityHour)) )
+hourlyIntensities <- hourlyIntensities %>%
+  mutate(ActivityHour = hour(mdy_hms(hourlyIntensities$ActivityHour)))
+
+glimpse(hourlyIntensities) 
+```
+
+Create a data frame TothourlyIntensities that has intensities grouped by the hour of the day.
+
+```{r TothourlyIntensities}
+TothourlyIntensities <- hourlyIntensities %>%
+  group_by(ActivityHour) %>%
+  summarise(total_intensity = sum(TotalIntensity))
+
+glimpse(TothourlyIntensities)
+```
+
+Let us see what time of the day people are the most active. We use the histogram for this purpose.
+
+```{r most intensive time of the day}
+ggplot(data=TothourlyIntensities, aes(x=ActivityHour, y=total_intensity)) + geom_histogram(stat = "identity") +
+  labs(title="Total Intensity vs. Time of Day")
+```
+
+People are most active between 5 and 7 p.m. and also around noon. An app could remind people to start their exercise activity around these times. 
+
+
+Just to confirm that the most intensive activity periods correspond to the most calories burnt, let us see when people burn the most calories using the hourlyCalories_merged.csv file.
+
+```{r}
+hourlyCalories <- read_csv("./hourlyCalories_merged.csv")
+glimpse(hourlyCalories) 
+```
+
+As before, we separate the date and the time of the day from the ActivityHour column; then create a data frame TothourlyCalories that has calories grouped by the hour of the day; and use a histogram to see at what time of the day people burn the most calories.
+
+
+```{r}
+hourlyCalories <- hourlyCalories %>%
+  mutate(ActivityDay = date(mdy_hms(hourlyCalories$ActivityHour)) )
+hourlyCalories <- hourlyCalories %>%
+  mutate(ActivityHour = hour(mdy_hms(hourlyCalories$ActivityHour)))
+
+glimpse(hourlyCalories) 
+```
+
+
+```{r}
+TothourlyCalories <- hourlyCalories %>%
+  group_by(ActivityHour) %>%
+  summarise(total_calories = sum(Calories))
+
+glimpse(TothourlyCalories)
+```
+
+```{r}
+ggplot(data=TothourlyCalories, aes(x=ActivityHour, y=total_calories)) + geom_histogram(stat = "identity") +
+  labs(title="Total Calories Burnt vs. Time of Day")
+```
+
+
+The maximums on the calories' histogram matches the most active periods (5-7 p.m. and around noon). 
+<br>
+
+<br>
+
+
+## Summary
+The recommendations for the company are to include in the app the following features:
+
+* A reminded to start intensive activities around noon, and around 5-7 p.m., when most people likely have time and would prefer to have the exercises.
+* Since exercise requires adequate hydration, a reminder to fill up the water bottle can be useful. 
+* A reminder to go to bed in time because more bed-time corresponds to more sleep-time. 
+* A reminder about the importance of activities with high intensity, because they burn more calories. 
+* Recent research claims that the more people walk the healthier they are with no limit on the benefits. The app should try to encourage people to walk more.
+* The limited weight log shows overweight average population. The data is limited to 8 persons out of the total 33. While burning calories is important, it is even more important to consider it in comparison to body weight. It should be investigated how to increase the number of daily weighing in.  
+
+## Future work
+* Given more time we should find additional, more up-to-date data that can be incorporated into the study.
+
+
